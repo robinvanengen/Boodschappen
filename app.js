@@ -1,7 +1,8 @@
 const $ = s => document.querySelector(s);
 const uid = () => crypto.randomUUID();
 const startOfWeek = date => { const d = new Date(date); const day = (d.getDay()+6)%7; d.setDate(d.getDate()-day); d.setHours(0,0,0,0); return d; };
-const keyFor = d => d.toISOString().slice(0,10);
+// Gebruik de lokale datum van het apparaat; UTC kon de verkeerde dag markeren.
+const keyFor = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const fmt = new Intl.DateTimeFormat('nl-NL',{day:'numeric',month:'short'});
 const dayFmt = new Intl.DateTimeFormat('nl-NL',{weekday:'long'});
 const initial = {
@@ -11,8 +12,32 @@ let data = JSON.parse(localStorage.getItem('samenBoodschappen') || 'null') || in
 let selectedWho='both'; let selectedMealIndex; let editingQuickId;
 if(data.version!==4){const sampleIds=new Set(['pasta','curry','tacos']);data.recipes=(data.recipes||[]).filter(r=>!sampleIds.has(r.id));Object.keys(data.plans||{}).forEach(date=>data.plans[date]=data.plans[date].filter(id=>!sampleIds.has(id)));data.extras=(data.extras||[]).map(x=>({...x,store:x.store==='any'?'home':x.store}));data.recipes.forEach(r=>r.ingredients=r.ingredients.map(x=>[x[0],x[1],x[2]==='any'?'home':x[2]]));Object.assign(data,{hidden:data.hidden||{},dayDone:data.dayDone||{},quickMeals:data.quickMeals||{},mealMeta:data.mealMeta||{},storeOverrides:data.storeOverrides||{}});Object.entries(data.plans).forEach(([date,ids])=>ids.forEach((recipeId,mealIndex)=>{const recipe=data.recipes.find(r=>r.id===recipeId);recipe?.ingredients.forEach((_,ingredientIndex)=>{const oldId=`${date}-${recipeId}-${ingredientIndex}`,newId=`${date}-${mealIndex}-${recipeId}-${ingredientIndex}`;if(data.hidden[oldId])data.hidden[newId]=true;if(data.storeOverrides[oldId])data.storeOverrides[newId]=data.storeOverrides[oldId];})}));data.version=4;localStorage.setItem('samenBoodschappen',JSON.stringify(data));}
 let week = startOfWeek(new Date()); let selectedDate = keyFor(new Date()); let activeStore='lidl'; let installPrompt;
-let supabaseClient, householdId;
-const save = () => { localStorage.setItem('samenBoodschappen',JSON.stringify(data)); if(supabaseClient&&householdId) supabaseClient.from('oi_state').update({payload:data,updated_at:new Date().toISOString()}).eq('household_id',householdId); };
+let supabaseClient, householdId, lastCloudUpdate='', lastCloudFingerprint='';
+const save = () => {
+  localStorage.setItem('samenBoodschappen',JSON.stringify(data));
+  if(supabaseClient&&householdId) saveToCloud();
+};
+async function saveToCloud(){
+  // Een kopie voorkomt dat een wijziging tijdens de netwerkactie half wordt opgeslagen.
+  const snapshot=JSON.parse(JSON.stringify(data));
+  const {data:result,error}=await supabaseClient.from('oi_state').update({payload:snapshot,updated_at:new Date().toISOString()}).eq('household_id',householdId).select('updated_at');
+  if(error){console.error('Opslaan van de gedeelde lijst lukt niet:',error.message);return;}
+  lastCloudFingerprint=JSON.stringify(snapshot);
+  if(result?.[0]?.updated_at)lastCloudUpdate=result[0].updated_at;
+}
+async function loadFromCloud(){
+  if(!supabaseClient||!householdId)return;
+  const {data:shared,error}=await supabaseClient.from('oi_state').select('payload,updated_at').eq('household_id',householdId).single();
+  if(error){console.error('Ophalen van de gedeelde lijst lukt niet:',error.message);return;}
+  const fingerprint=shared?.payload?JSON.stringify(shared.payload):'';
+  // Vergelijk ook de inhoud. Zo missen we geen wijziging als twee apparaten
+  // dezelfde server-tijd meekrijgen of een mobiel tabblad later wakker wordt.
+  if(shared?.payload&&fingerprint!==lastCloudFingerprint){
+    data=shared.payload; lastCloudUpdate=shared.updated_at;lastCloudFingerprint=fingerprint;
+    localStorage.setItem('samenBoodschappen',JSON.stringify(data));
+    renderPlanner();renderRecipes();renderList();
+  }
+}
 const esc = s => String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 
 function recipesForDate(date){ return (data.plans[date]||[]).map(id=>data.recipes.find(r=>r.id===id)).filter(Boolean); }
@@ -39,7 +64,7 @@ function ingredientRow(values=['','1','lidl']){return `<div class="ingredient-ro
 function openRecipe(recipe){
   $('#recipeId').value=recipe?.id||'';$('#recipeName').value=recipe?.name||'';$('#recipeServings').value=recipe?.servings||2;$('#recipeEmoji').value=recipe?.emoji||'🍽️';$('#recipeNote').value=recipe?.note||'';$('#recipeDialogEyebrow').textContent=recipe?'RECEPT BEWERKEN':'NIEUW RECEPT';$('#recipeDialogTitle').textContent=recipe?'Gerecht aanpassen':'Een gerecht maken';$('#ingredientRows').innerHTML=(recipe?.ingredients||[['','1','lidl']]).map(ingredientRow).join('');$('#recipeDialog').showModal();
 }
-function openMealPicker(date){ selectedDate=date||selectedDate; selectedWho='both';$('#quickMealName').value='';document.querySelectorAll('[data-who]').forEach(x=>x.classList.toggle('active',x.dataset.who==='both'));$('#mealChoices').innerHTML=data.recipes.length?data.recipes.map(r=>`<button type="button" class="choice" data-pick="${r.id}"><strong>${r.emoji} ${esc(r.name)}</strong><span>${r.ingredients.map(x=>esc(x[0])).join(' · ')}</span></button>`).join(''):'<p class="muted">Nog geen opgeslagen gerechten. Voeg snel iets toe of maak een recept.</p>';$('#mealDialog').showModal(); }
+function openMealPicker(date){ selectedDate=date||selectedDate; selectedWho='both';$('#quickMealName').value='';document.querySelectorAll('[data-who]').forEach(x=>x.classList.toggle('active',x.dataset.who==='both'));$('#mealDialog').showModal(); }
 function openMealEditor(date,mealIndex){
   selectedDate=date;selectedMealIndex=mealIndex; const recipe=recipesForDate(date)[mealIndex];if(!recipe)return;const who=data.mealMeta[date]?.[mealIndex]?.who||'both';$('#mealEditTitle').textContent=`${recipe.emoji} ${recipe.name}`;
   const ingredients=recipe.ingredients.map((x,index)=>{const id=`${date}-${mealIndex}-${recipe.id}-${index}`;if(data.hidden?.[id])return '';const store=data.storeOverrides?.[id]||x[2];return `<div class="detail-ingredient"><span>${esc(x[0])}<small class="item-detail"> · ${esc(x[1])}</small></span><select data-detail-store="${id}"><option value="lidl" ${store==='lidl'?'selected':''}>Lidl</option><option value="jumbo" ${store==='jumbo'?'selected':''}>Jumbo</option><option value="home" ${store==='home'?'selected':''}>Thuis</option></select><button type="button" class="delete" data-detail-remove="${id}" aria-label="Verwijder ${esc(x[0])}">×</button></div>`}).join('');
@@ -48,6 +73,7 @@ function openMealEditor(date,mealIndex){
 function openQuickEditor(date,id){selectedDate=date;editingQuickId=id;const meal=(data.quickMeals[date]||[]).find(m=>m.id===id);if(!meal)return;$('#quickEditName').value=meal.name;$('#quickEditNote').value=meal.note||'';$('#quickEditDialog').showModal();}
 function saveRecipe(e){e.preventDefault();const rows=[...document.querySelectorAll('.ingredient-row')];const ingredients=rows.map(row=>{const x=row.querySelectorAll('input,select');return [x[0].value.trim(),x[1].value.trim(),x[2].value]}).filter(x=>x[0]);if(!ingredients.length)return;const id=$('#recipeId').value||uid();const recipe={id,name:$('#recipeName').value.trim(),servings:+$('#recipeServings').value,emoji:$('#recipeEmoji').value||'🍽️',note:$('#recipeNote').value.trim(),ingredients}; const old=data.recipes.findIndex(r=>r.id===id);if(old>-1)data.recipes[old]=recipe;else data.recipes.push(recipe);save();renderRecipes();renderPlanner();renderList();$('#recipeDialog').close();}
 function addToPlan(id){data.plans[selectedDate]??=[];data.mealMeta[selectedDate]??=[];data.plans[selectedDate].push(id);data.mealMeta[selectedDate].push({who:selectedWho});save();renderPlanner();renderList();if($('#mealDialog').open)$('#mealDialog').close();}
+function addQuickMeal(){const name=$('#quickMealName').value.trim();if(!name)return;data.quickMeals[selectedDate]??=[];data.quickMeals[selectedDate].push({id:uid(),name,who:selectedWho,note:''});save();renderPlanner();$('#mealDialog').close();}
 
 document.addEventListener('click',e=>{
   const nav=e.target.closest('[data-view]');if(nav){document.querySelectorAll('.view,.nav-item').forEach(x=>x.classList.remove('active'));$(`#${nav.dataset.view}`).classList.add('active');nav.classList.add('active');}
@@ -62,7 +88,7 @@ document.addEventListener('click',e=>{
   const pick=e.target.closest('[data-pick]');if(pick)addToPlan(pick.dataset.pick);
   const who=e.target.closest('[data-who]');if(who){selectedWho=who.dataset.who;document.querySelectorAll('[data-who]').forEach(x=>x.classList.toggle('active',x===who));}
   const emoji=e.target.closest('[data-emoji]');if(emoji)$('#recipeEmoji').value=emoji.dataset.emoji;
-  if(e.target.closest('#addQuickMeal')){const name=$('#quickMealName').value.trim();if(name){data.quickMeals[selectedDate]??=[];data.quickMeals[selectedDate].push({id:uid(),name,who:selectedWho,note:''});save();renderPlanner();$('#mealDialog').close();}}
+  if(e.target.closest('#addQuickMeal'))addQuickMeal();
   if(e.target.closest('#mealNewRecipe')){$('#mealDialog').close();openRecipe();} if(e.target.closest('#addIngredient'))$('#ingredientRows').insertAdjacentHTML('beforeend',ingredientRow());if(e.target.closest('.remove-row'))e.target.closest('.ingredient-row').remove();
   const removeDetail=e.target.closest('[data-detail-remove]');if(removeDetail){data.hidden??={};data.hidden[removeDetail.dataset.detailRemove]=true;save();openMealEditor(selectedDate,selectedMealIndex);renderList();}
   const close=e.target.closest('[data-close]');if(close)$(`#${close.dataset.close}`).close();
@@ -79,6 +105,7 @@ document.addEventListener('dragover',e=>{const tab=e.target.closest('.store-tab'
 document.addEventListener('dragleave',e=>e.target.closest('.store-tab')?.classList.remove('drop-target'));
 document.addEventListener('drop',e=>{const tab=e.target.closest('.store-tab');if(!tab||!draggingItem)return;e.preventDefault();const extra=data.extras.find(x=>x.id===draggingItem);if(extra)extra.store=tab.dataset.store;else{data.storeOverrides??={};data.storeOverrides[draggingItem]=tab.dataset.store;}save();activeStore=tab.dataset.store;document.querySelectorAll('.store-tab').forEach(x=>x.classList.toggle('active',x===tab));renderList();});
 $('#recipeForm').addEventListener('submit',saveRecipe);$('#recipeSearch').addEventListener('input',renderRecipes);$('#itemForm').addEventListener('submit',e=>{e.preventDefault();data.extras.push({id:uid(),extra:true,week:keyFor(week),name:$('#itemName').value.trim(),amount:$('#itemAmount').value.trim(),store:$('#itemStore').value});save();renderList();e.target.reset();$('#itemDialog').close();});
+$('#quickMealName').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addQuickMeal();}});
 $('#quickEditForm').addEventListener('submit',e=>{e.preventDefault();const meal=(data.quickMeals[selectedDate]||[]).find(m=>m.id===editingQuickId);if(!meal)return;meal.name=$('#quickEditName').value.trim();meal.note=$('#quickEditNote').value.trim();save();renderPlanner();$('#quickEditDialog').close();});
 $('#emojiPicker').innerHTML=['🍝','🍛','🍕','🍲','🥗','🌮','🍔','🥘','🥪','🍜','🥞','🐟'].map(emoji=>`<button type="button" data-emoji="${emoji}" aria-label="Kies ${emoji}">${emoji}</button>`).join('');
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('#installButton').hidden=false});$('#installButton').onclick=async()=>{installPrompt.prompt();await installPrompt.userChoice;$('#installButton').hidden=true};
@@ -87,13 +114,18 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js');rend
 async function connectSharedApp(){
   if(!window.supabase||!window.SUPABASE_URL)return;
   supabaseClient=window.supabase.createClient(window.SUPABASE_URL,window.SUPABASE_ANON_KEY);
-  let {data:{session}}=await supabaseClient.auth.getSession();
-  if(!session){const email=window.prompt('Vul je e-mailadres in voor de gedeelde app. Je ontvangt een veilige inloglink.');if(email)await supabaseClient.auth.signInWithOtp({email,options:{emailRedirectTo:location.href}});return;}
-  const {data:members}=await supabaseClient.from('oi_members').select('household_id').eq('user_id',session.user.id).limit(1);
-  if(!members?.length){const code=window.prompt('Voer de uitnodigingscode van jullie huishouden in. Laat leeg om een nieuw huishouden te maken.');const result=code?await supabaseClient.rpc('oi_join_household',{code}):await supabaseClient.rpc('oi_create_household',{household_name:'Oppie en Ienie'});householdId=code?result.data?.[0]?.household_id:result.data?.[0]?.household_id;if(!code&&result.data?.[0]?.invite_code)alert(`Jullie uitnodigingscode is: ${result.data[0].invite_code}`);}
-  else householdId=members[0].household_id;
+  // Eén gedeeld huishouden: de app opent direct, zonder e-mailstap.
+  // Nieuwe vaste opslag voor de actuele appversie. Oude Vercel-links kunnen
+  // deze gezamenlijke lijst daardoor niet meer met verouderde data overschrijven.
+  householdId='bbd151f1-55d1-4e8c-b976-f02a1d5973d5';
   if(!householdId)return;
-  const {data:shared}=await supabaseClient.from('oi_state').select('payload').eq('household_id',householdId).single();if(shared?.payload&&Object.keys(shared.payload).length){data=shared.payload;renderPlanner();renderRecipes();renderList();}else save();
-  supabaseClient.channel(`oi-${householdId}`).on('postgres_changes',{event:'UPDATE',schema:'public',table:'oi_state',filter:`household_id=eq.${householdId}`},payload=>{data=payload.new.payload;renderPlanner();renderRecipes();renderList();}).subscribe();
+  const {data:shared}=await supabaseClient.from('oi_state').select('payload,updated_at').eq('household_id',householdId).single();
+  if(shared?.payload&&Object.keys(shared.payload).length){data=shared.payload;lastCloudUpdate=shared.updated_at;lastCloudFingerprint=JSON.stringify(data);renderPlanner();renderRecipes();renderList();}else save();
+  supabaseClient.channel(`oi-${householdId}`).on('postgres_changes',{event:'UPDATE',schema:'public',table:'oi_state',filter:`household_id=eq.${householdId}`},payload=>{data=payload.new.payload;lastCloudUpdate=payload.new.updated_at;lastCloudFingerprint=JSON.stringify(data);localStorage.setItem('samenBoodschappen',JSON.stringify(data));renderPlanner();renderRecipes();renderList();}).subscribe();
+  // Realtime is snel; deze korte controle vangt ook mobiele browsers op die
+  // een realtime verbinding op de achtergrond tijdelijk pauzeren.
+  window.setInterval(loadFromCloud,2000);
+  window.addEventListener('focus',loadFromCloud);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadFromCloud();});
 }
 connectSharedApp();
