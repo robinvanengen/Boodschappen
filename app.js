@@ -64,7 +64,21 @@ function ingredientRow(values=['','1','lidl']){return `<div class="ingredient-ro
 function openRecipe(recipe){
   $('#recipeId').value=recipe?.id||'';$('#recipeName').value=recipe?.name||'';$('#recipeServings').value=recipe?.servings||2;$('#recipeEmoji').value=recipe?.emoji||'🍽️';$('#recipeNote').value=recipe?.note||'';$('#recipeDialogEyebrow').textContent=recipe?'RECEPT BEWERKEN':'NIEUW RECEPT';$('#recipeDialogTitle').textContent=recipe?'Gerecht aanpassen':'Een gerecht maken';$('#ingredientRows').innerHTML=(recipe?.ingredients||[['','1','lidl']]).map(ingredientRow).join('');$('#recipeDialog').showModal();
 }
-function openMealPicker(date){ selectedDate=date||selectedDate; selectedWho='both';$('#quickMealName').value='';document.querySelectorAll('[data-who]').forEach(x=>x.classList.toggle('active',x.dataset.who==='both'));$('#mealDialog').showModal(); }
+function renderMealChoices(){
+  const choices=$('#mealChoices');
+  choices.innerHTML=data.recipes.length
+    ?data.recipes.map(recipe=>`<button type="button" class="choice" data-pick="${recipe.id}"><strong>${recipe.emoji} ${esc(recipe.name)}</strong><span>${recipe.ingredients.length} ingrediënten · ${recipe.servings} porties</span></button>`).join('')
+    :'<p class="muted">Je hebt nog geen opgeslagen gerechten. Maak hieronder je eerste gerecht.</p>';
+}
+function openMealPicker(date){
+  selectedDate=date||selectedDate;
+  selectedWho='both';
+  $('#quickMealName').value='';
+  $('#mealPickerTitle').textContent=`Gerecht kiezen voor ${dayFmt.format(new Date(`${selectedDate}T12:00:00`))}`;
+  document.querySelectorAll('[data-who]').forEach(x=>x.classList.toggle('active',x.dataset.who==='both'));
+  renderMealChoices();
+  $('#mealDialog').showModal();
+}
 function openMealEditor(date,mealIndex){
   selectedDate=date;selectedMealIndex=mealIndex; const recipe=recipesForDate(date)[mealIndex];if(!recipe)return;const who=data.mealMeta[date]?.[mealIndex]?.who||'both';$('#mealEditTitle').textContent=`${recipe.emoji} ${recipe.name}`;
   const ingredients=recipe.ingredients.map((x,index)=>{const id=`${date}-${mealIndex}-${recipe.id}-${index}`;if(data.hidden?.[id])return '';const store=data.storeOverrides?.[id]||x[2];return `<div class="detail-ingredient"><span>${esc(x[0])}<small class="item-detail"> · ${esc(x[1])}</small></span><select data-detail-store="${id}"><option value="lidl" ${store==='lidl'?'selected':''}>Lidl</option><option value="jumbo" ${store==='jumbo'?'selected':''}>Jumbo</option><option value="home" ${store==='home'?'selected':''}>Thuis</option></select><button type="button" class="delete" data-detail-remove="${id}" aria-label="Verwijder ${esc(x[0])}">×</button></div>`}).join('');
