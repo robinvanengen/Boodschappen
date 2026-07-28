@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#165d3d" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <title>Oppie en Ienie boodschappen</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">ONZE KEUKEN</p>
+        <h1>Oppie en Ienie boodschappen</h1>
+      </div>
+      <button class="icon-button" id="installButton" hidden aria-label="Installeer app">⇩</button>
+    </header>
+
+    <main>
+      <section id="plannerView" class="view active">
+        <div class="week-nav card">
+          <button class="round-button" id="previousWeek" aria-label="Vorige week">‹</button>
+          <div>
+            <p class="muted" id="weekLabel"></p>
+            <h2 id="weekTitle"></h2>
+          </div>
+          <button class="round-button" id="nextWeek" aria-label="Volgende week">›</button>
+        </div>
+        <div id="weekGrid" class="week-grid"></div>
+        <button class="primary wide" id="addMealButton">＋ Gerecht inplannen</button>
+      </section>
+
+      <section id="recipesView" class="view">
+        <div class="section-heading">
+          <div><p class="eyebrow">JULLIE FAVORIETEN</p><h2>Receptenboek</h2></div>
+          <button class="primary compact" id="newRecipeButton">＋ Nieuw</button>
+        </div>
+        <label class="search"><span>⌕</span><input id="recipeSearch" type="search" placeholder="Zoek een gerecht" /></label>
+        <div id="recipeList" class="recipe-list"></div>
+      </section>
+
+      <section id="listView" class="view">
+        <div class="section-heading"><div><p class="eyebrow">VOOR DEZE WEEK</p><h2>Boodschappen</h2></div><button class="text-button" id="clearChecked">Wis afgevinkt</button></div>
+        <div id="listSummary" class="summary"></div>
+        <div class="store-tabs" role="tablist">
+          <button class="store-tab active" data-store="lidl">Lidl</button>
+          <button class="store-tab" data-store="jumbo">Jumbo</button>
+          <button class="store-tab" data-store="stores">Lidl + Jumbo</button>
+          <button class="store-tab" data-store="home">Thuis</button>
+        </div>
+        <div id="shoppingList" class="shopping-list"></div>
+        <button class="secondary wide" id="addItemButton">＋ Los item toevoegen</button>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Hoofdnavigatie">
+      <button class="nav-item active" data-view="plannerView"><span>▦</span>Week</button>
+      <button class="nav-item" data-view="recipesView"><span>♧</span>Recepten</button>
+      <button class="nav-item" data-view="listView"><span>☑</span>Lijst</button>
+    </nav>
+
+    <dialog id="mealDialog"><form method="dialog" class="modal"><div class="modal-header"><div><p class="eyebrow">INPLANNEN</p><h2>Gerecht kiezen</h2></div><button class="close" value="cancel">×</button></div><div class="who-picker" id="whoPicker"><span>Voor wie?</span><button type="button" data-who="both" class="active">Samen</button><button type="button" data-who="oppie">Oppie</button><button type="button" data-who="ienie">Ienie</button></div><label>Of snel iets inplannen<input id="quickMealName" placeholder="Bijv. pizza" /></label><button class="secondary wide" type="button" id="addQuickMeal">＋ Toevoegen aan deze dag</button><div id="mealChoices" class="choice-list"></div><button class="secondary wide" type="button" id="mealNewRecipe">＋ Nieuw gerecht maken</button></form></dialog>
+    <dialog id="mealEditDialog"><form method="dialog" class="modal"><div class="modal-header"><div><p class="eyebrow">INGEPLANDE MAALTIJD</p><h2 id="mealEditTitle">Maaltijd aanpassen</h2></div><button class="close" value="cancel">×</button></div><p class="muted detail-intro">Deze wijzigingen gelden alleen voor deze maaltijd in deze week.</p><div id="mealEditDetails"></div></form></dialog>
+    <dialog id="quickEditDialog"><form id="quickEditForm" class="modal small"><div class="modal-header"><div><p class="eyebrow">SNELLE MAALTIJD</p><h2>Maaltijd aanpassen</h2></div><button class="close" type="button" data-close="quickEditDialog">×</button></div><label>Naam<input required id="quickEditName" /></label><label>Omschrijving <span class="optional">optioneel</span><textarea id="quickEditNote" placeholder="Bijv. met extra kaas"></textarea></label><button class="primary wide" type="submit">Opslaan</button></form></dialog>
+    <dialog id="recipeDialog"><form id="recipeForm" class="modal"><div class="modal-header"><div><p class="eyebrow" id="recipeDialogEyebrow">NIEUW RECEPT</p><h2 id="recipeDialogTitle">Een gerecht maken</h2></div><button class="close" type="button" data-close="recipeDialog">×</button></div><input type="hidden" id="recipeId" /><label>Naam gerecht<input required id="recipeName" placeholder="Bijv. Romige pasta" /></label><div class="form-row"><label>Porties<input required id="recipeServings" type="number" min="1" value="2" /></label><label>Emoji<input id="recipeEmoji" maxlength="2" value="🍝" /></label></div><div class="emoji-picker" id="emojiPicker" aria-label="Kies een emoji">🍝 🍛 🍕 🍲 🥗 🌮 🍔 🥘 🥪 🍜 🥞 🐟</div><label>Notitie <span class="optional">optioneel</span><textarea id="recipeNote" placeholder="Bijv. snel op tafel"></textarea></label><div class="ingredient-head"><h3>Ingrediënten</h3><button type="button" class="text-button" id="addIngredient">＋ toevoegen</button></div><div id="ingredientRows"></div><button class="primary wide" type="submit">Recept opslaan</button></form></dialog>
+    <dialog id="itemDialog"><form id="itemForm" class="modal small"><div class="modal-header"><div><p class="eyebrow">LOS TOEVOEGEN</p><h2>Boodschap</h2></div><button class="close" type="button" data-close="itemDialog">×</button></div><label>Product<input required id="itemName" placeholder="Bijv. havermelk" /></label><div class="form-row"><label>Aantal<input id="itemAmount" value="1" /></label><label>Winkel<select id="itemStore"><option value="lidl">Lidl</option><option value="jumbo">Jumbo</option><option value="home">Thuis</option></select></label></div><button class="primary wide" type="submit">Toevoegen</button></form></dialog>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
