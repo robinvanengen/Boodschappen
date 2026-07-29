@@ -6,14 +6,22 @@ const keyFor = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')
 const fmt = new Intl.DateTimeFormat('nl-NL',{day:'numeric',month:'short'});
 const dayFmt = new Intl.DateTimeFormat('nl-NL',{weekday:'long'});
 const initial = {
-  recipes:[], plans:{}, extras:[], checked:{}, hidden:{}, dayDone:{}, quickMeals:{}, mealMeta:{}, storeOverrides:{}, temporaryRecipes:{}, customMealItems:{}, version:6
+  recipes:[], plans:{}, extras:[], checked:{}, hidden:{}, dayDone:{}, quickMeals:{}, mealMeta:{}, storeOverrides:{}, temporaryRecipes:{}, customMealItems:{}, version:7
 };
 let data = JSON.parse(localStorage.getItem('samenBoodschappen') || 'null') || initial;
 let selectedWho='both'; let selectedMealIndex; let editingQuickId; let temporaryRecipeDate;
-if((data.version||0)<5){const sampleIds=new Set(['pasta','curry','tacos']);data.recipes=(data.recipes||[]).filter(r=>!sampleIds.has(r.id));Object.keys(data.plans||{}).forEach(date=>data.plans[date]=data.plans[date].filter(id=>!sampleIds.has(id)));data.extras=(data.extras||[]).map(x=>({...x,store:x.store==='any'?'home':x.store}));data.recipes.forEach(r=>r.ingredients=r.ingredients.map(x=>[x[0],x[1],x[2]==='any'?'home':x[2]]));Object.assign(data,{hidden:data.hidden||{},dayDone:data.dayDone||{},quickMeals:data.quickMeals||{},mealMeta:data.mealMeta||{},storeOverrides:data.storeOverrides||{},temporaryRecipes:data.temporaryRecipes||{},customMealItems:data.customMealItems||{}});Object.entries(data.plans).forEach(([date,ids])=>ids.forEach((recipeId,mealIndex)=>{const recipe=data.recipes.find(r=>r.id===recipeId);recipe?.ingredients.forEach((_,ingredientIndex)=>{const oldId=`${date}-${recipeId}-${ingredientIndex}`,newId=`${date}-${mealIndex}-${recipeId}-${ingredientIndex}`;if(data.hidden[oldId])data.hidden[newId]=true;if(data.storeOverrides[oldId])data.storeOverrides[newId]=data.storeOverrides[oldId];})}));data.version=5;}
+const recipeKey=name=>String(name||'').trim().toLocaleLowerCase('nl-NL');
+function upgradeData(){let changed=false;
+if((data.version||0)<5){const sampleIds=new Set(['pasta','curry','tacos']);data.recipes=(data.recipes||[]).filter(r=>!sampleIds.has(r.id));Object.keys(data.plans||{}).forEach(date=>data.plans[date]=data.plans[date].filter(id=>!sampleIds.has(id)));data.extras=(data.extras||[]).map(x=>({...x,store:x.store==='any'?'home':x.store}));data.recipes.forEach(r=>r.ingredients=r.ingredients.map(x=>[x[0],x[1],x[2]==='any'?'home':x[2]]));Object.assign(data,{hidden:data.hidden||{},dayDone:data.dayDone||{},quickMeals:data.quickMeals||{},mealMeta:data.mealMeta||{},storeOverrides:data.storeOverrides||{},temporaryRecipes:data.temporaryRecipes||{},customMealItems:data.customMealItems||{}});Object.entries(data.plans).forEach(([date,ids])=>ids.forEach((recipeId,mealIndex)=>{const recipe=data.recipes.find(r=>r.id===recipeId);recipe?.ingredients.forEach((_,ingredientIndex)=>{const oldId=`${date}-${recipeId}-${ingredientIndex}`,newId=`${date}-${mealIndex}-${recipeId}-${ingredientIndex}`;if(data.hidden[oldId])data.hidden[newId]=true;if(data.storeOverrides[oldId])data.storeOverrides[newId]=data.storeOverrides[oldId];})}));data.version=5;changed=true;}
 // Extra ingrediënten horen bij één specifieke ingeplande maaltijd. Oude,
 // naamloze extra's kunnen anders bij een later recept op dezelfde dag terechtkomen.
-if((data.version||0)<6){Object.values(data.customMealItems||{}).forEach(items=>items.forEach(item=>{if(!Object.hasOwn(item,'recipeId'))item.recipeId=null;}));data.version=6;localStorage.setItem('samenBoodschappen',JSON.stringify(data));}
+if((data.version||0)<6){Object.values(data.customMealItems||{}).forEach(items=>items.forEach(item=>{if(!Object.hasOwn(item,'recipeId'))item.recipeId=null;}));data.version=6;changed=true;}
+// Een recept met dezelfde naam is een aanpassing, geen tweede recept. Bij
+// oudere data kiezen we de laatst opgeslagen versie en laten we het weekmenu
+// daarnaar verwijzen; zo blijft bijvoorbeeld Wortel Juliette zichtbaar.
+if((data.version||0)<7){const latestByName=new Map();(data.recipes||[]).forEach(recipe=>{if(recipeKey(recipe.name))latestByName.set(recipeKey(recipe.name),recipe);});const remap=new Map();(data.recipes||[]).forEach(recipe=>{const latest=latestByName.get(recipeKey(recipe.name));if(latest&&latest.id!==recipe.id)remap.set(recipe.id,latest.id);});if(remap.size){Object.keys(data.plans||{}).forEach(date=>data.plans[date]=data.plans[date].map(id=>remap.get(id)||id));data.recipes=data.recipes.filter(recipe=>latestByName.get(recipeKey(recipe.name))===recipe);}data.version=7;changed=true;}
+return changed;}
+if(upgradeData())localStorage.setItem('samenBoodschappen',JSON.stringify(data));
 let week = startOfWeek(new Date()); let selectedDate = keyFor(new Date()); let activeStore='lidl'; let installPrompt;
 let supabaseClient, householdId, lastCloudUpdate='', lastCloudFingerprint='';
 const save = () => {
@@ -36,9 +44,9 @@ async function loadFromCloud(){
   // Vergelijk ook de inhoud. Zo missen we geen wijziging als twee apparaten
   // dezelfde server-tijd meekrijgen of een mobiel tabblad later wakker wordt.
   if(shared?.payload&&fingerprint!==lastCloudFingerprint){
-    data=shared.payload; lastCloudUpdate=shared.updated_at;lastCloudFingerprint=fingerprint;
+    data=shared.payload; const upgraded=upgradeData(); lastCloudUpdate=shared.updated_at;lastCloudFingerprint=JSON.stringify(data);
     localStorage.setItem('samenBoodschappen',JSON.stringify(data));
-    renderPlanner();renderRecipes();renderList();
+    renderPlanner();renderRecipes();renderList();if(upgraded)saveToCloud();
   }
 }
 const esc = s => String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -91,7 +99,7 @@ function openMealEditor(date,mealIndex){
   $('#mealEditDetails').innerHTML=`<section class="detail-meal"><p class="item-detail">Voor ${whoLabel(who)}</p>${ingredients||'<p class="muted">Alle ingrediënten zijn verwijderd.</p>'}<div class="detail-add"><input id="detailAddName" placeholder="Bijv. extra tomaten" /><input id="detailAddAmount" placeholder="Aantal" value="1" /><button type="button" class="secondary" data-detail-add>＋ toevoegen</button></div></section>`;$('#mealEditDialog').showModal();
 }
 function openQuickEditor(date,id){selectedDate=date;editingQuickId=id;const meal=(data.quickMeals[date]||[]).find(m=>m.id===id);if(!meal)return;$('#quickEditName').value=meal.name;$('#quickEditNote').value=meal.note||'';$('#quickEditDialog').showModal();}
-function saveRecipe(e){e.preventDefault();const rows=[...document.querySelectorAll('.ingredient-row')];const ingredients=rows.map(row=>{const x=row.querySelectorAll('input,select');return [x[0].value.trim(),x[1].value.trim(),x[2].value]}).filter(x=>x[0]);if(!ingredients.length)return;const id=$('#recipeId').value||uid();const recipe={id,name:$('#recipeName').value.trim(),servings:+$('#recipeServings').value,emoji:$('#recipeEmoji').value||'🍽️',note:$('#recipeNote').value.trim(),instructions:$('#recipeInstructions').value.trim(),ingredients}; const old=data.recipes.findIndex(r=>r.id===id);if(old>-1)data.recipes[old]=recipe;else if(temporaryRecipeDate){data.temporaryRecipes??={};data.temporaryRecipes[temporaryRecipeDate]??=[];data.temporaryRecipes[temporaryRecipeDate].push(recipe);selectedDate=temporaryRecipeDate;temporaryRecipeDate=undefined;addToPlan(id);}else data.recipes.push(recipe);save();renderRecipes();renderPlanner();renderList();$('#recipeDialog').close();}
+function saveRecipe(e){e.preventDefault();const rows=[...document.querySelectorAll('.ingredient-row')];const ingredients=rows.map(row=>{const x=row.querySelectorAll('input,select');return [x[0].value.trim(),x[1].value.trim(),x[2].value]}).filter(x=>x[0]);if(!ingredients.length)return;const matchingRecipe=data.recipes.find(r=>recipeKey(r.name)===recipeKey($('#recipeName').value));const id=$('#recipeId').value||matchingRecipe?.id||uid();const recipe={id,name:$('#recipeName').value.trim(),servings:+$('#recipeServings').value,emoji:$('#recipeEmoji').value||'🍽️',note:$('#recipeNote').value.trim(),instructions:$('#recipeInstructions').value.trim(),ingredients}; const old=data.recipes.findIndex(r=>r.id===id);if(old>-1)data.recipes[old]=recipe;else if(temporaryRecipeDate){data.temporaryRecipes??={};data.temporaryRecipes[temporaryRecipeDate]??=[];data.temporaryRecipes[temporaryRecipeDate].push(recipe);selectedDate=temporaryRecipeDate;temporaryRecipeDate=undefined;addToPlan(id);}else data.recipes.push(recipe);save();renderRecipes();renderPlanner();renderList();$('#recipeDialog').close();}
 function addToPlan(id){data.plans[selectedDate]??=[];data.mealMeta[selectedDate]??=[];data.plans[selectedDate].push(id);data.mealMeta[selectedDate].push({who:selectedWho});save();renderPlanner();renderList();if($('#mealDialog').open)$('#mealDialog').close();}
 function addQuickMeal(){const name=$('#quickMealName').value.trim();if(!name)return;data.quickMeals[selectedDate]??=[];data.quickMeals[selectedDate].push({id:uid(),name,who:selectedWho,note:'',store:$('#quickMealStore').value});save();renderPlanner();renderList();$('#mealDialog').close();}
 
@@ -142,8 +150,8 @@ async function connectSharedApp(){
   householdId='bbd151f1-55d1-4e8c-b976-f02a1d5973d5';
   if(!householdId)return;
   const {data:shared}=await supabaseClient.from('oi_state').select('payload,updated_at').eq('household_id',householdId).single();
-  if(shared?.payload&&Object.keys(shared.payload).length){data=shared.payload;lastCloudUpdate=shared.updated_at;lastCloudFingerprint=JSON.stringify(data);renderPlanner();renderRecipes();renderList();}else save();
-  supabaseClient.channel(`oi-${householdId}`).on('postgres_changes',{event:'UPDATE',schema:'public',table:'oi_state',filter:`household_id=eq.${householdId}`},payload=>{data=payload.new.payload;lastCloudUpdate=payload.new.updated_at;lastCloudFingerprint=JSON.stringify(data);localStorage.setItem('samenBoodschappen',JSON.stringify(data));renderPlanner();renderRecipes();renderList();}).subscribe();
+  if(shared?.payload&&Object.keys(shared.payload).length){data=shared.payload;const upgraded=upgradeData();lastCloudUpdate=shared.updated_at;lastCloudFingerprint=JSON.stringify(data);localStorage.setItem('samenBoodschappen',JSON.stringify(data));renderPlanner();renderRecipes();renderList();if(upgraded)saveToCloud();}else save();
+  supabaseClient.channel(`oi-${householdId}`).on('postgres_changes',{event:'UPDATE',schema:'public',table:'oi_state',filter:`household_id=eq.${householdId}`},payload=>{data=payload.new.payload;const upgraded=upgradeData();lastCloudUpdate=payload.new.updated_at;lastCloudFingerprint=JSON.stringify(data);localStorage.setItem('samenBoodschappen',JSON.stringify(data));renderPlanner();renderRecipes();renderList();if(upgraded)saveToCloud();}).subscribe();
   // Realtime is snel; deze korte controle vangt ook mobiele browsers op die
   // een realtime verbinding op de achtergrond tijdelijk pauzeren.
   window.setInterval(loadFromCloud,2000);
