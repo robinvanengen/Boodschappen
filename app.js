@@ -51,7 +51,7 @@ function renderPlanner(){
 }
 function renderRecipes(){
   const term=$('#recipeSearch').value.toLowerCase(); const list=data.recipes.filter(r=>r.name.toLowerCase().includes(term));
-  $('#recipeList').innerHTML=list.length?list.map(r=>`<article class="recipe-card"><div class="recipe-icon">${r.emoji}</div><div><strong>${esc(r.name)}</strong><p class="recipe-meta">${r.ingredients.length} ingrediënten · ${r.servings} porties</p></div><div class="recipe-actions"><button class="mini-button" data-edit="${r.id}" aria-label="Bewerk">✎</button><button class="mini-button" data-plan-recipe="${r.id}" aria-label="Plan in">＋</button></div></article>`).join(''):'<p class="muted">Nog geen gerechten gevonden.</p>';
+  $('#recipeList').innerHTML=list.length?list.map(r=>`<article class="recipe-card" data-edit="${r.id}" role="button" tabindex="0"><div class="recipe-icon">${r.emoji}</div><div><strong>${esc(r.name)}</strong><p class="recipe-meta">${r.ingredients.length} ingrediënten · ${r.servings} porties</p></div></article>`).join(''):'<p class="muted">Nog geen gerechten gevonden.</p>';
 }
 function weekItems(){
   let items=[]; for(let i=0;i<7;i++){const date=keyFor(new Date(week.getFullYear(),week.getMonth(),week.getDate()+i)),day=dayFmt.format(new Date(`${date}T12:00:00`));recipesForDate(date).forEach((r,mealIndex)=>{r.ingredients.forEach((x,index)=>{const id=`${date}-${mealIndex}-${r.id}-${index}`;items.push({id,name:x[0],amount:x[1],store:data.storeOverrides?.[id]||x[2],source:r.name,day})});(data.customMealItems?.[`${date}-${mealIndex}`]||[]).forEach(x=>items.push({id:x.id,name:x.name,amount:x.amount,store:data.storeOverrides?.[x.id]||x.store,source:r.name,day}));});(data.quickMeals[date]||[]).forEach(meal=>{const id=`quick-${meal.id}`;items.push({id,name:meal.name,amount:'1',store:data.storeOverrides?.[id]||meal.store||'lidl',source:'Snel ingepland',day});});} return items.concat(data.extras.filter(x=>x.week===keyFor(week))).filter(x=>!data.hidden?.[x.id]);
@@ -99,11 +99,12 @@ document.addEventListener('click',e=>{
   const editQuick=e.target.closest('[data-edit-quick]');if(editQuick){openQuickEditor(editQuick.dataset.editQuick,editQuick.dataset.quickId);return;}
   const editMeal=e.target.closest('[data-edit-meal]');if(editMeal){openMealEditor(editMeal.dataset.editMeal,+editMeal.dataset.editIndex);return;}
   const day=e.target.closest('.week-day');if(day)openMealPicker(day.dataset.date);
-  if(e.target.closest('#addMealButton'))openMealPicker(keyFor(week));if(e.target.closest('#newRecipeButton')){temporaryRecipeDate=undefined;openRecipe();}
+  if(e.target.closest('#newRecipeButton')){temporaryRecipeDate=undefined;openRecipe();}
   const edit=e.target.closest('[data-edit]');if(edit)openRecipe(data.recipes.find(r=>r.id===edit.dataset.edit));const plan=e.target.closest('[data-plan-recipe]');if(plan){selectedDate=keyFor(week);addToPlan(plan.dataset.planRecipe);}
   const pick=e.target.closest('[data-pick]');if(pick)addToPlan(pick.dataset.pick);
   const who=e.target.closest('[data-who]');if(who){selectedWho=who.dataset.who;document.querySelectorAll('[data-who]').forEach(x=>x.classList.toggle('active',x===who));}
   const emoji=e.target.closest('[data-emoji]');if(emoji)$('#recipeEmoji').value=emoji.dataset.emoji;
+  const card=e.target.closest('[data-open-card]');if(card){const cards={lidl:{title:'Lidl Plus',src:'Foto/LIDL.jpg'},jumbo:{title:'Jumbo',src:'Foto/JUMBO.jpg'},ah:{title:'Albert Heijn',src:'Foto/Albert%20Heijn.jpg'}};const selected=cards[card.dataset.openCard];$('#cardDialogTitle').textContent=selected.title;$('#cardDialogImage').src=selected.src;$('#cardDialogImage').alt=`${selected.title} bonuskaart`;$('#cardDialog').showModal();}
   if(e.target.closest('#addQuickMeal'))addQuickMeal();
   if(e.target.closest('#mealNewRecipe')){temporaryRecipeDate=selectedDate;$('#mealDialog').close();openRecipe();} if(e.target.closest('#addIngredient'))$('#ingredientRows').insertAdjacentHTML('beforeend',ingredientRow());if(e.target.closest('.remove-row'))e.target.closest('.ingredient-row').remove();
   const addDetail=e.target.closest('[data-detail-add]');if(addDetail){const name=$('#detailAddName').value.trim();if(name){const key=`${selectedDate}-${selectedMealIndex}`;data.customMealItems??={};data.customMealItems[key]??=[];data.customMealItems[key].push({id:`${selectedDate}-${selectedMealIndex}-custom-${uid()}`,name,amount:$('#detailAddAmount').value.trim()||'1',store:'lidl'});save();openMealEditor(selectedDate,selectedMealIndex);renderList();}return;}
