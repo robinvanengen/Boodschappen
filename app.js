@@ -6,7 +6,7 @@ const keyFor = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')
 const fmt = new Intl.DateTimeFormat('nl-NL',{day:'numeric',month:'short'});
 const dayFmt = new Intl.DateTimeFormat('nl-NL',{weekday:'long'});
 const initial = {
-  recipes:[], plans:{}, extras:[], checked:{}, hidden:{}, dayDone:{}, quickMeals:{}, mealMeta:{}, storeOverrides:{}, temporaryRecipes:{}, customMealItems:{}, version:7
+  recipes:[], plans:{}, extras:[], checked:{}, hidden:{}, dayDone:{}, quickMeals:{}, mealMeta:{}, storeOverrides:{}, temporaryRecipes:{}, customMealItems:{}, version:8
 };
 let data = JSON.parse(localStorage.getItem('samenBoodschappen') || 'null') || initial;
 let selectedWho='both'; let selectedMealIndex; let editingQuickId; let temporaryRecipeDate;
@@ -20,6 +20,10 @@ if((data.version||0)<6){Object.values(data.customMealItems||{}).forEach(items=>i
 // oudere data kiezen we de laatst opgeslagen versie en laten we het weekmenu
 // daarnaar verwijzen; zo blijft bijvoorbeeld Wortel Juliette zichtbaar.
 if((data.version||0)<7){const latestByName=new Map();(data.recipes||[]).forEach(recipe=>{if(recipeKey(recipe.name))latestByName.set(recipeKey(recipe.name),recipe);});const remap=new Map();(data.recipes||[]).forEach(recipe=>{const latest=latestByName.get(recipeKey(recipe.name));if(latest&&latest.id!==recipe.id)remap.set(recipe.id,latest.id);});if(remap.size){Object.keys(data.plans||{}).forEach(date=>data.plans[date]=data.plans[date].map(id=>remap.get(id)||id));data.recipes=data.recipes.filter(recipe=>latestByName.get(recipeKey(recipe.name))===recipe);}data.version=7;changed=true;}
+// Ingrediënten krijgen een vaste sleutel op basis van hun naam, niet van hun
+// plaats in het recept. Daardoor blijft een oud weggehaald product niet per
+// ongeluk een nieuw product op dezelfde plek verbergen.
+if((data.version||0)<8){data.version=8;changed=true;}
 return changed;}
 if(upgradeData())localStorage.setItem('samenBoodschappen',JSON.stringify(data));
 let week = startOfWeek(new Date()); let selectedDate = keyFor(new Date()); let activeStore='lidl'; let installPrompt;
@@ -51,14 +55,16 @@ async function loadFromCloud(){
 }
 const esc = s => String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 
-function recipesForDate(date){ return (data.plans[date]||[]).map(id=>data.recipes.find(r=>r.id===id)||data.temporaryRecipes?.[date]?.find(r=>r.id===id)).filter(Boolean); }
+function plannedMealsForDate(date){return (data.plans[date]||[]).map((id,mealIndex)=>({recipe:data.recipes.find(r=>r.id===id)||data.temporaryRecipes?.[date]?.find(r=>r.id===id),mealIndex})).filter(meal=>meal.recipe);}
+function recipesForDate(date){ return plannedMealsForDate(date).map(meal=>meal.recipe); }
 function customItemsForMeal(date,mealIndex,recipeId){return (data.customMealItems?.[`${date}-${mealIndex}`]||[]).filter(item=>item.recipeId===recipeId);}
+function ingredientId(date,mealIndex,recipeId,ingredient){return `${date}-${mealIndex}-${recipeId}-ingredient-${encodeURIComponent(recipeKey(ingredient?.[0]))}`;}
 const whoLabel = who => ({both:'Samen',oppie:'Oppie',ienie:'Ienie'}[who]||'Samen');
 function renderPlanner(){
   const end = new Date(week); end.setDate(end.getDate()+6);
   $('#weekLabel').textContent=`${fmt.format(week)} – ${fmt.format(end)}`;
   $('#weekTitle').textContent='Weekmenu'; const today=keyFor(new Date()); let html='';
-  for(let i=0;i<7;i++){const d=new Date(week);d.setDate(d.getDate()+i);const k=keyFor(d), meals=recipesForDate(k), quick=data.quickMeals[k]||[];const all=[...meals.map((r,index)=>({name:r.name,emoji:r.emoji,index,who:data.mealMeta[k]?.[index]?.who||'both'})),...quick.map(m=>({name:m.name,emoji:'🍽️',quickId:m.id,who:m.who||'both'}))]; html+=`<article class="week-day ${k===today?'today':''} ${data.dayDone[k]?'complete':''}" data-date="${k}"><div class="day-top"><input class="day-done" type="checkbox" data-day-done="${k}" ${data.dayDone[k]?'checked':''} aria-label="Dag afvinken"/><span class="day-label">${dayFmt.format(d)}</span><span class="date-number">${d.getDate()}</span></div>${all.length?all.map(m=>`<div class="meal-chip" ${m.quickId?`data-edit-quick="${k}" data-quick-id="${m.quickId}"`:`data-edit-meal="${k}" data-edit-index="${m.index}"`}><span>${m.emoji} ${esc(m.name)}</span><small class="meal-for">${whoLabel(m.who)}</small><button class="meal-remove" ${m.quickId?`data-remove-quick="${k}" data-quick-id="${m.quickId}"`:`data-remove-meal="${k}" data-meal-index="${m.index}"`} aria-label="Verwijder ${esc(m.name)}">×</button></div>`).join(''):'<p class="empty-day">Tik om te plannen</p>'}</article>`;}
+  for(let i=0;i<7;i++){const d=new Date(week);d.setDate(d.getDate()+i);const k=keyFor(d), meals=plannedMealsForDate(k), quick=data.quickMeals[k]||[];const all=[...meals.map(({recipe:r,mealIndex})=>({name:r.name,emoji:r.emoji,index:mealIndex,who:data.mealMeta[k]?.[mealIndex]?.who||'both'})),...quick.map(m=>({name:m.name,emoji:'🍽️',quickId:m.id,who:m.who||'both'}))]; html+=`<article class="week-day ${k===today?'today':''} ${data.dayDone[k]?'complete':''}" data-date="${k}"><div class="day-top"><input class="day-done" type="checkbox" data-day-done="${k}" ${data.dayDone[k]?'checked':''} aria-label="Dag afvinken"/><span class="day-label">${dayFmt.format(d)}</span><span class="date-number">${d.getDate()}</span></div>${all.length?all.map(m=>`<div class="meal-chip" ${m.quickId?`data-edit-quick="${k}" data-quick-id="${m.quickId}"`:`data-edit-meal="${k}" data-edit-index="${m.index}"`}><span>${m.emoji} ${esc(m.name)}</span><small class="meal-for">${whoLabel(m.who)}</small><button class="meal-remove" ${m.quickId?`data-remove-quick="${k}" data-quick-id="${m.quickId}"`:`data-remove-meal="${k}" data-meal-index="${m.index}"`} aria-label="Verwijder ${esc(m.name)}">×</button></div>`).join(''):'<p class="empty-day">Tik om te plannen</p>'}</article>`;}
   $('#weekGrid').innerHTML=html;
 }
 function renderRecipes(){
@@ -66,7 +72,7 @@ function renderRecipes(){
   $('#recipeList').innerHTML=list.length?list.map(r=>`<article class="recipe-card" data-edit="${r.id}" role="button" tabindex="0"><div class="recipe-icon">${r.emoji}</div><div><strong>${esc(r.name)}</strong><p class="recipe-meta">${r.ingredients.length} ingrediënten · ${r.servings} porties</p></div></article>`).join(''):'<p class="muted">Nog geen gerechten gevonden.</p>';
 }
 function weekItems(){
-  let items=[]; for(let i=0;i<7;i++){const date=keyFor(new Date(week.getFullYear(),week.getMonth(),week.getDate()+i)),day=dayFmt.format(new Date(`${date}T12:00:00`));recipesForDate(date).forEach((r,mealIndex)=>{r.ingredients.forEach((x,index)=>{const id=`${date}-${mealIndex}-${r.id}-${index}`;items.push({id,name:x[0],amount:x[1],store:data.storeOverrides?.[id]||x[2],source:r.name,day})});customItemsForMeal(date,mealIndex,r.id).forEach(x=>items.push({id:x.id,name:x.name,amount:x.amount,store:data.storeOverrides?.[x.id]||x.store,source:r.name,day}));});(data.quickMeals[date]||[]).forEach(meal=>{const id=`quick-${meal.id}`;items.push({id,name:meal.name,amount:'1',store:data.storeOverrides?.[id]||meal.store||'lidl',source:'Snel ingepland',day});});} return items.concat(data.extras.filter(x=>x.week===keyFor(week))).filter(x=>!data.hidden?.[x.id]);
+  let items=[]; for(let i=0;i<7;i++){const date=keyFor(new Date(week.getFullYear(),week.getMonth(),week.getDate()+i)),day=dayFmt.format(new Date(`${date}T12:00:00`));plannedMealsForDate(date).forEach(({recipe:r,mealIndex})=>{r.ingredients.forEach(x=>{const id=ingredientId(date,mealIndex,r.id,x);items.push({id,name:x[0],amount:x[1],store:data.storeOverrides?.[id]||x[2],source:r.name,day})});customItemsForMeal(date,mealIndex,r.id).forEach(x=>items.push({id:x.id,name:x.name,amount:x.amount,store:data.storeOverrides?.[x.id]||x.store,source:r.name,day}));});(data.quickMeals[date]||[]).forEach(meal=>{const id=`quick-${meal.id}`;items.push({id,name:meal.name,amount:'1',store:data.storeOverrides?.[id]||meal.store||'lidl',source:'Snel ingepland',day});});} return items.concat(data.extras.filter(x=>x.week===keyFor(week))).filter(x=>!data.hidden?.[x.id]);
 }
 function renderList(){
   const items=weekItems(); $('#listSummary').textContent=items.length?`${items.length} boodschappen uit je weekmenu.`:'Plan een gerecht of voeg een los item toe.';
@@ -93,9 +99,9 @@ function openMealPicker(date){
   $('#mealDialog').showModal();
 }
 function openMealEditor(date,mealIndex){
-  selectedDate=date;selectedMealIndex=mealIndex; const recipe=recipesForDate(date)[mealIndex];if(!recipe)return;const who=data.mealMeta[date]?.[mealIndex]?.who||'both';$('#mealEditTitle').textContent=`${recipe.emoji} ${recipe.name}`;
+  selectedDate=date;selectedMealIndex=mealIndex; const recipe=plannedMealsForDate(date).find(meal=>meal.mealIndex===mealIndex)?.recipe;if(!recipe)return;const who=data.mealMeta[date]?.[mealIndex]?.who||'both';$('#mealEditTitle').textContent=`${recipe.emoji} ${recipe.name}`;
   const makeIngredient=(x,id)=>{if(data.hidden?.[id])return '';const store=data.storeOverrides?.[id]||x[2];return `<div class="detail-ingredient"><span>${esc(x[0])}<small class="item-detail"> · ${esc(x[1])}</small></span><select data-detail-store="${id}"><option value="lidl" ${store==='lidl'?'selected':''}>Lidl</option><option value="jumbo" ${store==='jumbo'?'selected':''}>Jumbo</option><option value="home" ${store==='home'?'selected':''}>Thuis</option><option value="online" ${store==='online'?'selected':''}>Online</option></select><button type="button" class="delete" data-detail-remove="${id}" aria-label="Verwijder ${esc(x[0])}">×</button></div>`};
-  const ingredients=recipe.ingredients.map((x,index)=>makeIngredient(x,`${date}-${mealIndex}-${recipe.id}-${index}`)).join('')+customItemsForMeal(date,mealIndex,recipe.id).map(x=>makeIngredient([x.name,x.amount,x.store],x.id)).join('');
+  const ingredients=recipe.ingredients.map(x=>makeIngredient(x,ingredientId(date,mealIndex,recipe.id,x))).join('')+customItemsForMeal(date,mealIndex,recipe.id).map(x=>makeIngredient([x.name,x.amount,x.store],x.id)).join('');
   $('#mealEditDetails').innerHTML=`<section class="detail-meal"><p class="item-detail">Voor ${whoLabel(who)}</p>${ingredients||'<p class="muted">Alle ingrediënten zijn verwijderd.</p>'}<div class="detail-add"><input id="detailAddName" placeholder="Bijv. extra tomaten" /><input id="detailAddAmount" placeholder="Aantal" value="1" /><button type="button" class="secondary" data-detail-add>＋ toevoegen</button></div></section>`;$('#mealEditDialog').showModal();
 }
 function openQuickEditor(date,id){selectedDate=date;editingQuickId=id;const meal=(data.quickMeals[date]||[]).find(m=>m.id===id);if(!meal)return;$('#quickEditName').value=meal.name;$('#quickEditNote').value=meal.note||'';$('#quickEditDialog').showModal();}
@@ -119,7 +125,7 @@ document.addEventListener('click',e=>{
   const card=e.target.closest('[data-open-card]');if(card){const cards={lidl:{title:'Lidl Plus',src:'Foto/LIDL.jpg'},jumbo:{title:'Jumbo',src:'Foto/JUMBO.jpg'},ah:{title:'Albert Heijn',src:'Foto/Albert%20Heijn.jpg'}};const selected=cards[card.dataset.openCard];$('#cardDialogTitle').textContent=selected.title;$('#cardDialogImage').src=selected.src;$('#cardDialogImage').alt=`${selected.title} bonuskaart`;$('#cardDialog').showModal();}
   if(e.target.closest('#addQuickMeal'))addQuickMeal();
   if(e.target.closest('#mealNewRecipe')){temporaryRecipeDate=selectedDate;$('#mealDialog').close();openRecipe();} if(e.target.closest('#addIngredient'))$('#ingredientRows').insertAdjacentHTML('beforeend',ingredientRow());if(e.target.closest('.remove-row'))e.target.closest('.ingredient-row').remove();
-  const addDetail=e.target.closest('[data-detail-add]');if(addDetail){const name=$('#detailAddName').value.trim();if(name){const key=`${selectedDate}-${selectedMealIndex}`;const recipe=recipesForDate(selectedDate)[selectedMealIndex];data.customMealItems??={};data.customMealItems[key]??=[];data.customMealItems[key].push({id:`${selectedDate}-${selectedMealIndex}-custom-${uid()}`,recipeId:recipe?.id,name,amount:$('#detailAddAmount').value.trim()||'1',store:'lidl'});save();openMealEditor(selectedDate,selectedMealIndex);renderList();}return;}
+  const addDetail=e.target.closest('[data-detail-add]');if(addDetail){const name=$('#detailAddName').value.trim();if(name){const key=`${selectedDate}-${selectedMealIndex}`;const recipe=plannedMealsForDate(selectedDate).find(meal=>meal.mealIndex===selectedMealIndex)?.recipe;data.customMealItems??={};data.customMealItems[key]??=[];data.customMealItems[key].push({id:`${selectedDate}-${selectedMealIndex}-custom-${uid()}`,recipeId:recipe?.id,name,amount:$('#detailAddAmount').value.trim()||'1',store:'lidl'});save();openMealEditor(selectedDate,selectedMealIndex);renderList();}return;}
   const removeDetail=e.target.closest('[data-detail-remove]');if(removeDetail){const id=removeDetail.dataset.detailRemove;const key=`${selectedDate}-${selectedMealIndex}`;const custom=data.customMealItems?.[key];if(custom?.some(x=>x.id===id)){data.customMealItems[key]=custom.filter(x=>x.id!==id);}else{data.hidden??={};data.hidden[id]=true;}save();openMealEditor(selectedDate,selectedMealIndex);renderList();}
   const close=e.target.closest('[data-close]');if(close){if(close.dataset.close==='recipeDialog')temporaryRecipeDate=undefined;$(`#${close.dataset.close}`).close();}
   const tab=e.target.closest('.store-tab');if(tab){activeStore=tab.dataset.store;document.querySelectorAll('.store-tab').forEach(x=>x.classList.toggle('active',x===tab));renderList();}
