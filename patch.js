@@ -21,7 +21,7 @@
       <p id="gameMessage" class="muted game-message">Druk op A, de knop of de spatiebalk om te springen.</p>
     </div>`;
   document.querySelector('main').append(game);
-  const nav=document.querySelector('.bottom-nav'); const b=document.createElement('button'); b.className='nav-item'; b.dataset.view='gameView'; b.innerHTML='<span>🎮</span>Spel'; nav.append(b);
+  const nav=document.querySelector('.bottom-nav'); const b=document.createElement('button'); b.className='nav-item'; b.dataset.view='gameView'; b.innerHTML='<span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="11" rx="4"/><path d="M8 10v5M5.5 12.5h5M16.5 11h.01M18.5 14h.01"/></svg></span><span class="nav-label">Spel</span>'; nav.append(b);
 
   const style=document.createElement('style'); style.textContent=`
     .reindeer-game{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px}.game-intro{font-size:14px;color:var(--muted);margin-bottom:12px}.game-hud{display:flex;justify-content:space-between;gap:10px;font-size:14px;margin-bottom:12px}.game-hud span{background:#f0f7d4;border-radius:11px;padding:8px 10px;color:var(--green)}
