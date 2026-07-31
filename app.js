@@ -179,9 +179,9 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js');rend
 // de acties die ze nodig hebben.
 window.oppieApp={get data(){return data;},save,renderRecipes,uid,esc,generateRecipeWithAI};
 
-async function generateRecipeWithAI(pantry,householdCode,mode='voorraad',excludedRecipeName=''){
+async function generateRecipeWithAI(pantry,householdCode,mode='voorraad',excludedRecipeName='',bakingFeedback=''){
   if(!supabaseClient)throw new Error('De gedeelde verbinding is nog niet klaar. Probeer het zo nog eens.');
-  const {data:result,error}=await supabaseClient.functions.invoke('generate-recipe',{body:{pantry,householdCode,mode,excludedRecipeName}});
+const {data:result,error}=await supabaseClient.functions.invoke('generate-recipe',{body:{pantry,householdCode,mode,excludedRecipeName,bakingFeedback}});
   if(error){const responseError=await error.context?.json?.().catch(()=>null);throw new Error(responseError?.error||'Het recept kon nu niet worden gemaakt.');}
   if(!result?.recipe)throw new Error(result?.error||'Er kwam geen bruikbaar recept terug.');
   return result.recipe;
