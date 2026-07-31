@@ -6,7 +6,7 @@ const keyFor = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')
 const fmt = new Intl.DateTimeFormat('nl-NL',{day:'numeric',month:'short'});
 const dayFmt = new Intl.DateTimeFormat('nl-NL',{weekday:'long'});
 const initial = {
-  recipes:[], plans:{}, extras:[], checked:{}, hidden:{}, dayDone:{}, quickMeals:{}, mealMeta:{}, storeOverrides:{}, temporaryRecipes:{}, customMealItems:{}, mealIngredientOrder:{}, version:8
+  recipes:[], plans:{}, extras:[], checked:{}, hidden:{}, dayDone:{}, quickMeals:{}, mealMeta:{}, storeOverrides:{}, temporaryRecipes:{}, customMealItems:{}, mealIngredientOrder:{}, pantry:[], version:9
 };
 let data = JSON.parse(localStorage.getItem('samenBoodschappen') || 'null') || initial;
 let selectedWho='both'; let selectedMealIndex; let editingQuickId; let temporaryRecipeDate; let pendingRecipeImage='';
@@ -24,6 +24,7 @@ if((data.version||0)<7){const latestByName=new Map();(data.recipes||[]).forEach(
 // plaats in het recept. Daardoor blijft een oud weggehaald product niet per
 // ongeluk een nieuw product op dezelfde plek verbergen.
 if((data.version||0)<8){data.version=8;changed=true;}
+if((data.version||0)<9){data.pantry=data.pantry||[];data.version=9;changed=true;}
 return changed;}
 if(upgradeData())localStorage.setItem('samenBoodschappen',JSON.stringify(data));
 let week = startOfWeek(new Date()); let selectedDate = keyFor(new Date()); let activeStore='lidl'; let installPrompt;
@@ -152,6 +153,19 @@ $('#emojiPicker').innerHTML=['🍝','🍛','🍕','🍲','🥗','🌮','🍔','�
 $('#recipePhoto').addEventListener('change',event=>{const file=event.target.files?.[0];if(!file)return;if(file.size>700*1024){alert('Kies een foto kleiner dan 700 KB.');event.target.value='';return;}const reader=new FileReader();reader.onload=()=>{pendingRecipeImage=reader.result;$('#recipePhotoPreview').src=pendingRecipeImage;$('#recipePhotoPreview').hidden=false;};reader.readAsDataURL(file);});
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('#installButton').hidden=false});$('#installButton').onclick=async()=>{installPrompt.prompt();await installPrompt.userChoice;$('#installButton').hidden=true};
 if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js');renderPlanner();renderRecipes();renderList();
+
+// Kleine, expliciete brug voor losse UI-uitbreidingen in patch.js. De
+// gegevens zelf blijven privé in dit bestand; uitbreidingen krijgen alleen
+// de acties die ze nodig hebben.
+window.oppieApp={get data(){return data;},save,renderRecipes,uid,esc,generateRecipeWithAI};
+
+async function generateRecipeWithAI(pantry,householdCode){
+  if(!supabaseClient)throw new Error('De gedeelde verbinding is nog niet klaar. Probeer het zo nog eens.');
+  const {data:result,error}=await supabaseClient.functions.invoke('generate-recipe',{body:{pantry,householdCode}});
+  if(error)throw new Error(error.message||'Het recept kon nu niet worden gemaakt.');
+  if(!result?.recipe)throw new Error(result?.error||'Er kwam geen bruikbaar recept terug.');
+  return result.recipe;
+}
 
 async function connectSharedApp(){
   if(!window.supabase||!window.SUPABASE_URL)return;

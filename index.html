@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>Oppie en Ienie boodschappen 🦌</title>
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="style.css?v=professioneel-1" />
     <style>
       .emoji-choice{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px}.emoji-choice span{font-size:14px;font-weight:700;color:var(--ink)}.emoji-toggle{margin:0;padding:10px 12px}.emoji-picker{max-height:170px;overflow:auto;padding:6px;background:#f8faf6;border:1px solid var(--line);border-radius:12px;margin:-4px 0 12px}.recipe-photo-preview{width:100%;max-height:180px;object-fit:cover;border-radius:12px;margin:-4px 0 12px;border:1px solid var(--line)}.recipe-thumb{width:46px;height:46px;object-fit:cover;border-radius:12px}
     </style>
@@ -46,7 +46,7 @@
 
       <section id="recipesView" class="view">
         <div class="section-heading">
-          <div><p class="eyebrow">JULLIE FAVORIETEN</p><h2>Receptenboek</h2></div>
+          <div><h2>Receptenboek</h2></div>
           <button class="primary compact" id="newRecipeButton">＋ Nieuw</button>
         </div>
         <label class="search"><span>⌕</span><input id="recipeSearch" type="search" placeholder="Zoek een gerecht" /></label>
@@ -54,7 +54,7 @@
       </section>
 
       <section id="listView" class="view">
-        <div class="section-heading"><div><p class="eyebrow">VOOR DEZE WEEK</p><h2>Boodschappen</h2></div><button class="text-button" id="clearChecked">Verwijder geselecteerde</button></div>
+        <div class="section-heading list-heading"><div><h2>Supermarkt</h2></div><button class="text-button" id="clearChecked">Verwijder geselecteerde</button></div>
         <div id="listSummary" class="summary"></div>
         <div class="store-tabs" role="tablist">
           <button class="store-tab active" data-store="lidl">Lidl</button>
@@ -69,7 +69,7 @@
       </section>
 
       <section id="cardsView" class="view">
-        <div class="section-heading"><div><p class="eyebrow">HANDIG IN DE WINKEL</p><h2>Bonuskaarten</h2></div></div>
+        <div class="section-heading"><div><h2>Bonuskaarten</h2></div></div>
         <p class="muted card-intro">Kies een winkel om de kaart groot te tonen bij de kassa.</p>
         <div class="bonus-cards">
           <button class="bonus-card" type="button" data-open-card="lidl"><strong>Lidl Plus</strong><small>Tik om te tonen</small></button>
@@ -94,7 +94,7 @@
     <dialog id="cardDialog"><div class="modal card-modal"><div class="modal-header"><div><p class="eyebrow">BONUSKAART</p><h2 id="cardDialogTitle">Kaart</h2></div><button class="close" type="button" data-close="cardDialog">×</button></div><img id="cardDialogImage" alt="Bonuskaart" /></div></dialog>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js"></script>
-    <script src="patch.js"></script>
+    <script src="app.js?v=voorraad-3"></script>
+    <script src="patch.js?v=professioneel-3"></script>
   </body>
 </html>
